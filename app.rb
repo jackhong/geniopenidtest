@@ -31,8 +31,8 @@ get '/' do
     %p
       %label
         OpenID:
-        %input(type='text' name='openid_identifier')
-      %input(type='submit' value='Sign in')
+        %input(type='text' name='openid_identifier' size=30 value='https://portal.geni.net/server/server.php')
+      %input(type='submit' value='Connect')
   HAML
 end
 
@@ -53,7 +53,10 @@ post '/unauthenticated' do
     # OpenID authenticate success, but user is missing
     # (Warden::OpenID.user_finder returns nil)
     session[:identity_url] = openid[:response].identity_url
-    redirect '/register'
+    name = "Authenticated user via #{session[:identity_url]}"
+    users[session.delete(:identity_url)] = name
+    warden.set_user name
+    redirect '/'
   else
     # OpenID authenticate failure
     flash[:error] = warden.message
