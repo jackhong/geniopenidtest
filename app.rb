@@ -3,11 +3,21 @@ require 'bundler'
 Bundler.setup
 Bundler.require :default
 
-users = {}
+$users = {}
+
+OPENID_FIELDS = {
+  google: ["http://axschema.org/contact/email", "http://axschema.org/namePerson/last"],
+  geni: ['http://geni.net/projects', 'http://geni.net/slices', 'http://geni.net/user/urn', 'http://geni.net/user/prettyname']
+}
 
 Warden::OpenID.configure do |config|
+  config.required_fields = OPENID_FIELDS[:geni]
   config.user_finder do |response|
-    users[response.identity_url]
+    #fields = OpenID::SReg::Response.from_success_response(response)
+    identity_url = response.identity_url
+    fields = OpenID::AX::FetchResponse.from_success_response(response).data
+    $users[identity_url] = fields
+    identity_url
   end
 end
 
@@ -26,6 +36,10 @@ get '/' do
   %p
     Welcome #{warden.user}!
     %a(href='/signout') Sign out
+  %hr
+    - $users[warden.user] && $users[warden.user].each do |k, v|
+      %p
+        #{k}: #{v}
 - else
   %form(action='/signin' method='post')
     %p
@@ -54,8 +68,11 @@ post '/unauthenticated' do
     # (Warden::OpenID.user_finder returns nil)
     session[:identity_url] = openid[:response].identity_url
     name = "Authenticated user via #{session[:identity_url]}"
-    users[session.delete(:identity_url)] = name
-    warden.set_user name
+    fields = OpenID::SReg::Response.from_success_response(openid[:response])
+    u = fields.data
+    $users[session.delete(:identity_url)] = u
+    u[:junk] = (1..100000).map { "bob" }
+    warden.set_user u
     redirect '/'
   else
     # OpenID authenticate failure
@@ -79,7 +96,7 @@ post '/signup' do
   if (name = params[:name]).empty?
     redirect '/register'
   else
-    users[session.delete(:identity_url)] = name
+    $users[session.delete(:identity_url)] = name
     warden.set_user name
     flash[:notice] = 'You signed up'
     redirect '/'
